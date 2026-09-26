@@ -81,3 +81,23 @@ test("counts are not scaled as money", () => {
   assert.equal(body.limit, 500);
   assert.equal(body.creditLimit, 1500);
 });
+
+test("a refusal names the fields a leaked value came from, never the value", () => {
+  const rules = { ...base, keep: ["status", "note"] };
+  const result = scrub({ counterpartyName: "Jane Doe", note: "Payment to JANE DOE" }, rules);
+  assert.deepEqual(result.leakFields, ["counterpartyName"]);
+  assert.ok(!JSON.stringify(result.leakFields).toLowerCase().includes("jane"));
+});
+
+test("no false leak when a value reappears only in a fake name, a public enum, or a keepIf field", () => {
+  const rules = { ...base, keep: ["status", "mercuryCategory"], names: { ...base.names, "categoryData.name": "account" } };
+  // A custom category named like one of Mercury's own is a public term, not personal data.
+  assert.deepEqual(scrub({ mercuryCategory: "Restaurants", categoryData: { name: "Restaurants" } }, rules).leakFields, []);
+  // A merchant word that happens to be in a Twin Peaks place name isn't a leak.
+  assert.deepEqual(scrub({ counterpartyName: "Lodge Insurance Co", other: "Great Northern Hotel" }, rules).leakFields, []);
+  // A value that also appears inside a keepIf-validated (public) field isn't a leak.
+  assert.deepEqual(
+    scrub({ x: { description: "Dividend posted: cusip:X (iShares Bond ETF)" }, y: { additionalDetails: "iShares Bond ETF" } }).leakFields,
+    [],
+  );
+});

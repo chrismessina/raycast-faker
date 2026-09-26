@@ -39,6 +39,7 @@ if (command === "record" || command === "replay" || command === "off") {
   console.log(`${extension}: ${config.mode}\nFixtures: ${join(extensionDir(extension), "fixtures")}`);
 } else if (command === "clear") {
   rmSync(join(extensionDir(extension), "fixtures"), { recursive: true, force: true });
+  rmSync(join(extensionDir(extension), "refused.json"), { force: true });
   console.log(`${extension}: fixtures cleared.`);
 } else {
   console.log(usage);

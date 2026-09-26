@@ -1,6 +1,6 @@
 {
   "name": "@chrismessina/raycast-faker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Real-looking, obscured data for Store screenshots of Raycast extensions that show personal data",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,13 @@
     "!dist/**/*.map",
     "CHANGELOG.md"
   ],
-  "keywords": ["raycast", "screenshots", "fixtures", "privacy", "faker"],
+  "keywords": [
+    "raycast",
+    "screenshots",
+    "fixtures",
+    "privacy",
+    "faker"
+  ],
   "author": "Chris Messina",
   "license": "MIT",
   "repository": {

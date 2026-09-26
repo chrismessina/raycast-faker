@@ -1,5 +1,5 @@
 import { readConfig } from "./config";
-import { fixtureName, readFixture, writeFixture } from "./fixtures";
+import { fixtureName, readFixture, recordRefusal, writeFixture } from "./fixtures";
 import { createScrubber, FakerRules } from "./scrub";
 
 export type { FakerRules } from "./scrub";
@@ -73,8 +73,10 @@ export function withFaker(fetchImpl: Fetch, rules: FakerRules): Fetch {
     for (const [key, value] of url.searchParams) mapped.searchParams.set(key, scrubber.mapId(value));
 
     if (scrubbed.leaks.length > 0) {
+      // Field names only, never values, so the report is safe to keep and to share.
+      recordRefusal(active.extension, `${method} ${mapped.pathname}`, scrubbed.leakFields);
       console.warn(
-        `[raycast-faker] Not saving ${method} ${url.pathname}: ${scrubbed.leaks.length} original value(s) survived scrubbing. Add their fields to \`names\` or remove them from \`keep\`.`,
+        `[raycast-faker] Not saving ${method} ${url.pathname}: values from ${scrubbed.leakFields.join(", ")} survived scrubbing. See refused.json.`,
       );
     } else {
       writeFixture(active.extension, url.host, fixtureName(method, mapped.pathname + mapped.search), {

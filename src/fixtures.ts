@@ -37,4 +37,16 @@ export function writeFixture(extension: string, host: string, name: string, fixt
   writeFileSync(path, JSON.stringify(fixture, null, 2) + "\n", { mode: 0o600 });
 }
 
+/**
+ * Why a fixture wasn't saved: the request and the fields whose values survived scrubbing, in
+ * ~/.config/raycast-faker/<extension>/refused.json. Field names only, never values.
+ */
+export function recordRefusal(extension: string, request: string, fields: string[]) {
+  const path = join(extensionDir(extension), "refused.json");
+  const refused = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, string[]>) : {};
+  refused[request] = fields;
+  mkdirSync(extensionDir(extension), { recursive: true });
+  writeFileSync(path, JSON.stringify(refused, null, 2) + "\n", { mode: 0o600 });
+}
+
 export { PAGING };

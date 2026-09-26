@@ -176,3 +176,16 @@ A second review reopened three of these, now fixed:
    recommendation, since `ship` already checks screenshot staleness), or as a user skill?
 3. **Scale factor.** 0.4–1.6 changes magnitudes but keeps the shape. Is the shape of your real
    history acceptable in a public screenshot, or should replay also jitter dates?
+
+## Next: per-token profiles (found 2026-09-26, recording Mercury)
+
+Fixtures are keyed by method and path only, so an extension with two logins (Mercury: a personal
+and a business account) records both organizations to the same `/accounts` file, and the last
+one to answer wins. Replay can then show only one organization, and a mixed recording pairs one
+organization's accounts with the other's Treasury.
+
+Proposal: key each recording by a profile, `HMAC(secret, token)` from the request's
+Authorization header, so the token itself is never stored. In replay, a login whose token matches
+a recorded profile gets it (a real token imported automatically maps straight back), and a
+placeholder token `1`, `2`, … selects profiles in the order they were first recorded.
+Workaround until then: record with only one login present.

@@ -58,6 +58,8 @@ export interface ScrubResult<T> {
   body: T;
   /** Original values that still appear in the output. A non-empty list means don't write it. */
   leaks: string[];
+  /** The fields those values came from (`key` or `parent.key`). Safe to log: names, never values. */
+  leakFields: string[];
 }
 
 export function createScrubber(rules: FakerRules, secrets: FakerSecrets) {
@@ -66,6 +68,11 @@ export function createScrubber(rules: FakerRules, secrets: FakerSecrets) {
   const keepHosts = new Set([...rules.hosts, ...(rules.keepHosts ?? [])]);
   const safeWords = new Set([...SAFE_WORDS, ...(rules.safeWords ?? []).map((word) => word.toLowerCase())]);
   // Any script, not just ASCII: "张伟" is one word, and not a banking word.
+  /**
+   * Values written out verbatim by a `keep` rule or as a short code, collected per scrub. The leak
+   * check searches only these: fakes can't leak, and `keepIf` values passed a public pattern.
+   */
+  let kept = new Set<string>();
   const words = (value: string) => value.toLowerCase().match(/\p{L}+/gu) ?? [];
   /** A rule for `parent.key` wins over one for `key`, so `merchantLock.name` can differ from `name`. */
   const ruleFor = <T>(map: Record<string, T>, key: string | undefined, parent: string | undefined) =>
@@ -119,24 +126,31 @@ export function createScrubber(rules: FakerRules, secrets: FakerSecrets) {
     key: string | undefined,
     parent: string | undefined,
     value: string,
-    originals: Set<string>,
-    nameWords: Set<string>,
+    originals: Map<string, string>,
+    nameWords: Map<string, string>,
   ): string {
-    if (key && (keep.has(key) || (parent !== undefined && keep.has(`${parent}.${key}`)))) return value;
+    if (key && (keep.has(key) || (parent !== undefined && keep.has(`${parent}.${key}`)))) {
+      kept.add(value);
+      return value;
+    }
     if (ruleFor(keepIf, key, parent)?.test(value)) return value;
     const kind = ruleFor(names, key, parent);
     // Short ASCII values are codes ("CA", "US"). A short name ("张伟" is two characters) is still a name.
-    if (!kind && value.length <= SHORT && /^[\x20-\x7e]*$/.test(value)) return value;
+    if (!kind && value.length <= SHORT && /^[\x20-\x7e]*$/.test(value)) {
+      kept.add(value);
+      return value;
+    }
     if (DATE.test(value)) return shiftDate(value);
     if (TIMESTAMP.test(value)) return shiftTimestamp(value);
 
+    const field = parent !== undefined && key !== undefined ? `${parent}.${key}` : (key ?? "(root)");
     const replaced = (fake: string) => {
-      if (fake !== value && value.length >= LEAK_MIN) originals.add(value);
+      if (fake !== value && value.length >= LEAK_MIN) originals.set(value, field);
       return fake;
     };
     // A person's or business's name can leak in parts ("Payment to Jane"), so each word is checked too.
     const replacedName = (fake: string) => {
-      for (const word of words(value)) if (word.length >= LEAK_MIN && !safeWords.has(word)) nameWords.add(word);
+      for (const word of words(value)) if (word.length >= LEAK_MIN && !safeWords.has(word)) nameWords.set(word, field);
       return replaced(fake);
     };
 
@@ -176,8 +190,8 @@ export function createScrubber(rules: FakerRules, secrets: FakerSecrets) {
     value: unknown,
     key: string | undefined,
     parent: string | undefined,
-    originals: Set<string>,
-    nameWords: Set<string>,
+    originals: Map<string, string>,
+    nameWords: Map<string, string>,
   ): unknown {
     if (typeof value === "string") return fakeString(key, parent, value, originals, nameWords);
     if (typeof value === "number") return key && (scale.has(key) || MONEY.test(key)) ? scaleNumber(value) : value;
@@ -191,17 +205,29 @@ export function createScrubber(rules: FakerRules, secrets: FakerSecrets) {
   return {
     /** Replace personal data in a JSON body, and report any original value that survived. */
     scrub<T>(body: T): ScrubResult<T> {
-      const originals = new Set<string>();
-      const nameWords = new Set<string>();
+      const originals = new Map<string, string>();
+      const nameWords = new Map<string, string>();
+      kept = new Set();
       const scrubbed = walk(body, undefined, undefined, originals, nameWords) as T;
       // Case-insensitive, and word by word for names, so "JANE DOE" and "Payment to Jane" are caught.
-      const output = JSON.stringify(scrubbed).toLowerCase();
-      const outputWords = new Set(words(output));
-      const leaks = [
-        ...[...originals].filter((original) => output.includes(original.toLowerCase())),
-        ...[...nameWords].filter((word) => outputWords.has(word)),
+      // Only verbatim values are searched. An original that is itself a whole kept value (a custom
+      // category named "Restaurants", like Mercury's own) is a public term, not personal data.
+      const keptValues = [...kept].map((value) => value.toLowerCase());
+      const publicTerms = new Set(keptValues);
+      const text = keptValues.join("\n");
+      const keptWords = new Set(words(text));
+      const leaked = [
+        ...[...originals].filter(([original]) => {
+          const lower = original.toLowerCase();
+          return !publicTerms.has(lower) && text.includes(lower);
+        }),
+        ...[...nameWords].filter(([word]) => !publicTerms.has(word) && keptWords.has(word)),
       ];
-      return { body: scrubbed, leaks };
+      return {
+        body: scrubbed,
+        leaks: leaked.map(([value]) => value),
+        leakFields: [...new Set(leaked.map(([, field]) => field))],
+      };
     },
     /** A request path with its identifying segments mapped the same way bodies are. */
     mapPath,
