@@ -1,191 +1,136 @@
 # @chrismessina/raycast-faker — spec
 
-Fake-but-real-shaped data for Store screenshots of extensions that show personal data.
-First adopter: `raycast-mercury`. Status: **approved 2026-09-26** with the decisions below.
+Realistic Store screenshots for Raycast extensions that show confidential data: a bank, a CRM, a
+calendar, health records, an inbox. The only realistic data such an extension has is its
+contributor's own account. The usual workaround is to blur or pixelate it, which makes the
+screenshots look broken and still risks a missed value. The faker records your real API
+responses, replaces the values that identify anyone, and replays the result. The screens look
+lived-in, and nothing on them is real.
 
-## Decisions
+## How it fits into publishing
 
-- **Name:** `@chrismessina/raycast-faker`. API: `withFaker(fetch, rules)` and `fakerKey(key)`; config in `~/.config/raycast-faker/<extensionName>/`.
-- **Skill:** `raycast-screenshots` in the `raycast-extensions` plugin, next to `ship`.
-- **Goal:** everything looks real; only personal details are obscured.
-- **Names** come from Twin Peaks: characters for people, places for businesses.
-- **Dates** are jittered: one hidden shift for the whole extension, plus a few hours of jitter on timestamps. Date-only fields take only the shift, so running balances and charts stay consistent.
-- **Nothing real is stored.** Each fake value is derived from a hash of the real value and a random secret in `config.json`, so no real-to-fake table is ever written.
-- **Pagination parameters** (`start_after`, `end_before`, `cursor`, `offset`) are part of a fixture's key, so page 2 is not a replay of page 1. Other query parameters are ignored.
-- **Record mode uses the real storage**, since it needs your real logins. Only **replay** switches `fakerKey` to the fake namespace.
+1. **Wire it once:** wrap the extension's `fetch` in `withFaker`, and each LocalStorage key in `fakerKey`.
+2. **Record:** `npx raycast-faker record` from the extension root (or pass its `name` from
+   `package.json`), then walk every screen you plan to shoot.
+3. **Replay:** `npx raycast-faker replay`, then take the screenshots with Raycast's Window Capture.
+4. **Off:** `npx raycast-faker off`. Your real data is back, untouched.
 
-## The problem, grounded in Mercury
-
-Store screenshots have to come from somewhere. For Mercury, "somewhere" is Chris's bank.
-Faking the API alone does not make a screenshot safe. Three things in Mercury leak real data
-even when every response is fake:
-
-1. **Cached balances.** Manage Accounts paints the LocalStorage snapshot before any request.
-2. **Stored identity.** A login's name ("Christopher Messina") is saved at Add Account, not fetched.
-3. **Non-fetch transfers.** Statement PDFs download through curl (`raycast-downloader`), which no
-   `fetch` wrapper can see.
-
-So the kit covers requests, storage, and a written procedure (the skill) for the rest.
+Retake them whenever the UI changes. Fixtures stay on disk, so later rounds need only replay,
+unless a screen calls an endpoint you haven't recorded. The full procedure, including capture
+and audit, is the `screenshots` skill in `raycast-extensions-skills`.
 
 ## Pieces
 
-| Piece | Ships in the Store bundle? | Job |
+| Piece | In the Store build? | Job |
 | --- | --- | --- |
-| `withFaker(fetch, rules)` | Yes, inert | Replays scrubbed fixtures, or records them |
-| `fakerKey(key)` | Yes, inert | Moves LocalStorage keys to a separate namespace while fixtures are on |
-| `raycast-screenshots` skill | No | Record, replay, capture, and audit, step by step |
+| `withFaker(fetch, rules)` | Yes, inert | Records scrubbed fixtures, or replays them |
+| `fakerKey(key)` | Yes, inert | Gives LocalStorage a separate, empty namespace while replaying |
+| `isReplaying()` | Yes, inert | Lets the extension refuse work the faker can't see (downloads) |
+| `raycast-faker` CLI | No | Switches modes and clears fixtures |
 
-"Inert" means: when `environment.isDevelopment` is false, `withFaker` returns the `fetch` it
-was given, unchanged, and `fakerKey` returns its argument. A Store build cannot enter fixture
-mode, whatever is on disk.
+**Inert** means that when `environment.isDevelopment` is false, `withFaker` returns the `fetch` it
+was given, `fakerKey` returns its argument, and `isReplaying` returns false. A Store build can't
+enter record or replay, whatever is on disk.
 
 ## Modes
 
-Set in `~/.config/raycast-faker/<extensionName>/config.json`, outside the extension folder
-(`ray publish` ships everything inside it). A missing file means `off`.
-
-```json
-{ "mode": "replay" }
-```
+The mode is stored in `~/.config/raycast-faker/<extension>/config.json`, outside the extension
+folder, because `ray publish` ships everything inside it. A missing file means `off`.
 
 | Mode | Requests | Written to disk |
 | --- | --- | --- |
 | `off` | Real, unchanged | Nothing |
-| `record` | Real; each JSON response is scrubbed **in memory** | The scrubbed copy only. Raw data is never written |
-| `replay` | Answered from fixtures. **Unmatched requests fail** (they don't fall through to the real API) | Nothing |
+| `record` | Real. Each response with a JSON `content-type` is scrubbed **in memory** | The scrubbed copy only; raw data is never written |
+| `replay` | Answered from fixtures. **Unmatched requests fail** | Nothing |
 
-Unmatched requests failing is deliberate. A screen that silently fetched real data is the exact
-failure this kit exists to prevent. A missing fixture shows up as an error you can see.
+In replay, a request with no fixture gets a 404 instead of reaching the real API. A missing
+fixture shows up as an error on screen, never as a screen quietly showing real data.
 
-## Fixtures
+Record uses the real LocalStorage, since it needs your real logins. Only replay switches `fakerKey`
+to the separate namespace, so you add an account again inside replay. Replay never checks tokens, so any token the
+extension itself accepts works.
 
-`~/.config/raycast-faker/<extensionName>/fixtures/<host>/<METHOD> <path>.json` holds
-`{ "status": 200, "body": … }`.
+## Rules
 
-- **Matched by method and path.** The query string is ignored by default, so
-  `/transactions?limit=500&order=desc` and `/transactions?search=chase` get the same answer.
-  Search results in screenshots are therefore illustrative; the skill says so.
-- **IDs stay consistent.** A real UUID maps to the same fake UUID everywhere, in bodies and in
-  paths. The extension navigates with fake IDs from fake lists, and the paths it requests match
-  the recorded ones.
-
-## Scrubbing (record mode)
-
-Rules are passed in code, so they're versioned with the extension. They're field names, nothing
-sensitive:
+Rules live in code, so they're versioned with the extension. They name fields, never values.
 
 ```ts
-const request = withFaker(fetch, {
-  hosts: ["api.mercury.com"],
-  keep: ["kind", "status", "type", "mercuryCategory", "documentType", "interval", "network"],
-  names: { counterpartyName: "company", nameOnCard: "person", legalBusinessName: "person", nickname: "account" },
-  scale: ["amount", "balance", "currentBalance", "availableBalance", "endingBalance", "netAmount"],
+const apiFetch = withFaker(fetch, {
+  hosts: ["api.example.com"], // requests to record and replay; everything else passes through
+  keep: ["status", "kind", "type"], // enums and public data the UI or its logic reads
+  keepIf: { description: /^Dividend posted: .+$/ }, // kept only when the value matches
+  keepHosts: ["app.example.com"], // URL hosts kept as they are, besides `hosts`
+  names: { counterpartyName: "company", nameOnCard: "person", name: "account", "merchantLock.name": "company" },
+  scale: ["amount", "balance"], // money; fields whose names look like money are scaled anyway
+  safeWords: ["brokerage"], // words that may stay in an account-style name
 });
 ```
 
-Defaults are **fail-closed**. Every string is replaced unless it is:
+**String values are fail-closed:** every one is replaced unless a rule keeps it, except ASCII codes
+of one or two characters. List every field the
+UI branches on (status, kind, type) in `keep`, or it arrives as fake text. Write a `keepIf` pattern
+as tightly as the public forms allow; a loose one keeps personal text.
 
-- in `keep`;
-- an ISO date or timestamp (dates are kept, so charts keep their shape);
-- a UUID (mapped consistently);
-- a URL (its host becomes `example.com`, and the path is mapped).
+| Value | Becomes |
+| --- | --- |
+| A `person` name | A Twin Peaks character |
+| A `company` name | A Twin Peaks place or business |
+| An `account` name | Kept if every word is banking vocabulary ("Savings ••6333", with the digits changed); otherwise a Twin Peaks place |
+| Other text (notes, memos) | A Twin Peaks line |
+| UUIDs | A fake UUID, the same everywhere, in bodies and in request paths |
+| Account numbers, digit strings | Other digits, same length |
+| Emails | A Twin Peaks character at `example.com` |
+| URLs | The host becomes `example.com` unless it's listed; IDs in the path are mapped |
+| Money | Multiplied by one hidden factor (0.4–1.6), so totals and running balances agree to within a few cents |
+| Dates | Shifted back by the same few days; timestamps also get a few hours of jitter |
+| Short ASCII codes ("US", "CA") | Kept, unless the field has a name rule |
 
-Replacements:
+A rule for `parent.key` wins over one for `key`, so a merchant's `name` can differ from an
+account's. Fakes are derived from an HMAC of the real value with a secret in `config.json`: the
+same real value in the same kind of field always gets the same fake, and no real-to-fake table
+is ever stored.
 
-- **Names:** realistic fakes from a small built-in word list (people, companies, merchants,
-  accounts). The same real value gets the same fake value everywhere. No faker dependency.
-- **Other strings** (notes, memos, descriptions): fake text of similar length.
-- **Numbers in `scale`:** multiplied by one factor, chosen at random once per extension (0.4–1.6)
-  and stored in `config.json`. One factor keeps totals, running balances, and return percentages
-  consistent with each other. It hides the real magnitudes, but not the shape of the history.
-- **Account numbers and other digit strings:** replaced digit for digit, keeping their length.
+**Leak check.** Before saving, the scrubber searches every value it kept verbatim for any original
+it replaced, and for each word of a replaced name, except banking vocabulary. A hit means a
+field holding personal data is in `keep`, so the fixture is **not saved**. The console and
+`refused.json` name the fields, never the values. Fix the rule and walk that screen again. A
+refusal is the faker doing its job.
 
-**Leak check before any write.** The scrubber knows every original value it replaced. If any
-original string of 4+ characters still appears anywhere in the output, that fixture is **not
-written**, and the log names the field. The extension keeps working in record mode; only that
-fixture is missing, which replay then reports as unmatched.
+The check has two blind spots: `keepIf` values (the pattern is their only check, so keep it
+tight) and originals shorter than four characters, which would match by coincidence.
 
-## Storage (`fakerKey`)
+## Fixtures
 
-```ts
-LocalStorage.getItem(fakerKey("mercury-logins"));
-```
+`~/.config/raycast-faker/<extension>/fixtures/<host>/<METHOD> <path>.json` holds
+`{ "status": 200, "body": … }`.
 
-While fixtures are on, this returns `raycast-faker:mercury-logins`. The extension sees an empty store
-(no logins, no cached balances), so you add an account inside fixture mode. Its name comes from
-the scrubbed `/organization`. Turning fixtures off returns you to the real store, untouched.
+- **Keyed by method, path, and page parameters** (`start_after`, `end_before`, `cursor`, `offset`),
+  so page 2 isn't a replay of page 1. Other query parameters are ignored: a search replays the
+  recorded list, so screenshot an unfiltered view or accept an illustrative result.
+- **`raycast-faker clear`** deletes the fixtures but keeps the secrets, so re-recording produces the
+  same fakes. Delete `config.json` for all-new fakes.
+- **One login per recording.** Fixtures aren't keyed by token, so two accounts calling the same
+  endpoint overwrite each other. Record with only the account you want to show.
 
-## Hardening after review (2026-09-26)
+## Where real data leaks besides `fetch`
 
-Codex found ten ways real data could reach disk. All are fixed and tested:
+The faker scrubs the string values in JSON responses from the wrapped `fetch`, and moves keys
+wrapped in `fakerKey`. Check each of these before shooting:
 
-- **No enum heuristic.** Every string not in `keep` or `keepIf` is replaced; enums must be listed.
-- **`keepIf: { field: /pattern/ }`** keeps a field only when its value matches.
-- **Account-style names** keep their words only if every word is banking vocabulary (`safeWords`
-  extends it). Otherwise they're replaced whole.
-- **Money is scaled even when unlisted,** whenever the field name looks like money.
-- **The leak check is case-insensitive** and also checks each word of a replaced name, except
-  banking vocabulary.
-- **Only `hosts` and `keepHosts` keep a URL's origin.** Anything else becomes `example.com`.
-- **The CLI generates secrets once, when it creates the config.** Before, it wrote `scale: 1`,
-  which would have left every amount unscaled.
-- **Extension names are validated** as a single path component, so `clear ..` can't escape.
-- **Adopters refuse non-`fetch` transfers while replaying** (Mercury: statement downloads).
-- **Storage keys are resolved at each use,** never cached at module load, so switching modes
-  can't leave one store pointing at the real data.
+- **What the scrubber leaves as is.** Object keys (a map keyed by email address), numbers other
+  than money (a numeric ID or account number), and path segments other than UUIDs and runs of
+  four or more digits (a username in `/users/jane`), which end up in fixture file names. If your
+  API puts personal data in any of these, don't record that endpoint.
 
-A second review reopened three of these, now fixed:
+- **Other caches.** `useCachedPromise`, `useCachedState`, `useFetch` and `Cache` hold real data
+  from normal use and show it before a replayed request answers. Key them with `fakerKey`, or
+  clear the extension's cache.
+- **Requests outside the wrapped `fetch`:** `useFetch`, which calls the global `fetch`; SDKs that
+  don't accept a custom `fetch`; curl and other downloaders; AppleScript; local files. Refuse them
+  with `isReplaying()`, or plan screens that don't show their results.
+- **Identity saved at setup,** such as an account name stored when a token is added. Replay starts
+  empty, so record the endpoint the setup flow calls.
+- **The shape of your history.** Scaling hides magnitudes, not trends: a chart keeps its real
+  shape. Decide whether that's acceptable for your data.
 
-- **Names in any script:** words are Unicode letters, and short values are kept as codes only when
-  they're ASCII and have no name rule ("张伟" is a name, "CA" is a code).
-- **Rules can name a parent** (`merchantLock.name`), which wins over the plain key (`name`).
-- **`total` and a bare `limit` aren't money.** In responses they're counts.
-- **A `keepIf` pattern must spell out the public forms exactly.** Mercury's keeps three Treasury
-  description shapes, not "anything after `posted:`".
-
-## What the kit does not cover
-
-- **Transfers outside `fetch`** (curl downloads, AppleScript, SDKs with their own transport).
-  The skill lists these per extension. For Mercury, don't screenshot a downloaded PDF.
-- **Server-side behavior** (search, filtering, pagination). Replay returns the recorded page.
-- **Deciding a screenshot is clean.** The skill ends with a human look at every image, plus an
-  automated pass that searches the recorded originals for any string visible in the screenshot.
-
-## `raycast-screenshots` skill (outline)
-
-1. **Inventory:** list the extension's hosts, caches, stored identity, and non-`fetch` transfers.
-2. **Wire it:** `withFaker` at the one `fetch` call site, `fakerKey` on every
-   LocalStorage key.
-3. **Record:** mode `record`, walk every screen, check the log for leak-check refusals.
-4. **Replay:** mode `replay`, add an account, walk every screen again, fix unmatched requests.
-5. **Capture** at 2000 × 1250 with Raycast's Window Capture.
-6. **Audit:** a human look at each image, plus the automated pass above.
-7. **Off:** mode `off`. Confirm real data is back and nothing from fixture mode leaked into it.
-
-## Mercury changes (the grounding)
-
-- `mercuryGet` calls `withFaker(fetch, rules)` instead of `fetch`.
-- Every LocalStorage key goes through `fakerKey`: logins, the legacy-import fingerprint,
-  balance snapshots, menu bar settings, and download history.
-- About 15 lines, all inert in the Store build.
-
-## Open questions
-
-1. **Name.** `raycast-faker`, or something that says "screenshots" (`raycast-screenshot-mode`)?
-2. **Where the skill lives.** In the `raycast-extensions` plugin next to `ship` (my
-   recommendation, since `ship` already checks screenshot staleness), or as a user skill?
-3. **Scale factor.** 0.4–1.6 changes magnitudes but keeps the shape. Is the shape of your real
-   history acceptable in a public screenshot, or should replay also jitter dates?
-
-## Next: per-token profiles (found 2026-09-26, recording Mercury)
-
-Fixtures are keyed by method and path only, so an extension with two logins (Mercury: a personal
-and a business account) records both organizations to the same `/accounts` file, and the last
-one to answer wins. Replay can then show only one organization, and a mixed recording pairs one
-organization's accounts with the other's Treasury.
-
-Proposal: key each recording by a profile, `HMAC(secret, token)` from the request's
-Authorization header, so the token itself is never stored. In replay, a login whose token matches
-a recorded profile gets it (a real token imported automatically maps straight back), and a
-placeholder token `1`, `2`, … selects profiles in the order they were first recorded.
-Workaround until then: record with only one login present.
+A human still has to look at every screenshot before it ships.

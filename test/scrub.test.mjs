@@ -20,7 +20,7 @@ function sample() {
     transactions: [
       {
         id: REAL_ID,
-        counterpartyName: "Christopher Messina",
+        counterpartyName: "Jane Doe",
         amount: -451.4,
         balance: 72864.88,
         status: "sent",
@@ -33,7 +33,7 @@ function sample() {
         securityName: "iShares 0-3 Month Treasury Bond ETF",
       },
     ],
-    card: { nameOnCard: "Christopher Messina", name: "Mercury Checking ••7791", amountCents: 250000 },
+    card: { nameOnCard: "Jane Doe", name: "Mercury Checking ••7791", amountCents: 250000 },
   };
 }
 
@@ -53,7 +53,7 @@ test("people and businesses become Twin Peaks names", () => {
 test("no original personal value survives, and nothing is flagged as a leak", () => {
   const result = createScrubber(rules, secrets).scrub(sample());
   const output = JSON.stringify(result.body);
-  for (const original of ["Christopher Messina", "Valencia", REAL_ID, "202200017791", "7791", "token=secret"]) {
+  for (const original of ["Jane Doe", "Valencia", REAL_ID, "202200017791", "7791", "token=secret"]) {
     assert.ok(!output.includes(original), `leaked: ${original}`);
   }
   assert.deepEqual(result.leaks, []);
