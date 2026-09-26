@@ -8,7 +8,7 @@ screens: the contributor's real data. The faker records your extension's real AP
 scrubs them in memory. People and businesses become Twin Peaks characters and places. Text IDs,
 account numbers, and free text are replaced consistently. Amounts are scaled by one hidden
 factor, and dates are shifted. Then it **replays** those fixtures while you take the
-screenshots. Everything looks real; nothing is.
+screenshots, so the screens look like real use and the names, amounts, and dates on them are fake.
 
 ```ts
 import { fakerKey, withFaker } from "@chrismessina/raycast-faker";
@@ -35,12 +35,11 @@ npx raycast-faker off      # back to your real data
   outside the extension folder, because `ray publish` ships everything inside it. Responses are
   scrubbed before they're saved, and a fixture in which a replaced value survives in a kept field
   is refused.
-- **Fail-closed.** Every string value is replaced unless a rule keeps it (or it's a one- or
-  two-letter code), and in replay a request with no fixture fails instead of reaching the real
-  API.
+- **Fail-closed.** Every string value is replaced unless a rule keeps it or it's a one- or
+  two-letter code. In replay, a request with no fixture fails instead of reaching the real API.
 - **Know the limits.** Object keys, numbers other than money, and some path segments are left as
   they are. Other caches, downloads, and SDKs with their own transport need handling in the
-  extension. See the list at the end of the spec.
+  extension. The spec lists them under "What the faker doesn't cover."
 
-Rules, modes, and the full list of replacements: [docs/SPEC.md](docs/SPEC.md). The step-by-step
+[docs/SPEC.md](docs/SPEC.md) covers the rules, the modes, and what each kind of value becomes. The step-by-step
 screenshot procedure is the `screenshots` skill in `raycast-extensions-skills`.

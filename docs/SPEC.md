@@ -4,8 +4,8 @@ Realistic Store screenshots for Raycast extensions that show confidential data: 
 calendar, health records, an inbox. The only realistic data such an extension has is its
 contributor's own account. The usual workaround is to blur or pixelate it, which makes the
 screenshots look broken and still risks a missed value. The faker records your real API
-responses, replaces the values that identify anyone, and replays the result. The screens look
-lived-in, and nothing on them is real.
+responses, replaces the values that identify anyone, and replays the result. The screenshots
+look like real use, and the names, amounts, and dates on them are fake.
 
 ## How it fits into publishing
 
@@ -15,7 +15,7 @@ lived-in, and nothing on them is real.
 3. **Replay:** `npx raycast-faker replay`, then take the screenshots with Raycast's Window Capture.
 4. **Off:** `npx raycast-faker off`. Your real data is back, untouched.
 
-Retake them whenever the UI changes. Fixtures stay on disk, so later rounds need only replay,
+Retake the screenshots whenever the UI changes. Fixtures stay on disk, so later rounds need only replay,
 unless a screen calls an endpoint you haven't recorded. The full procedure, including capture
 and audit, is the `screenshots` skill in `raycast-extensions-skills`.
 
@@ -46,9 +46,9 @@ folder, because `ray publish` ships everything inside it. A missing file means `
 In replay, a request with no fixture gets a 404 instead of reaching the real API. A missing
 fixture shows up as an error on screen, never as a screen quietly showing real data.
 
-Record uses the real LocalStorage, since it needs your real logins. Only replay switches `fakerKey`
-to the separate namespace, so you add an account again inside replay. Replay never checks tokens, so any token the
-extension itself accepts works.
+Record uses the real LocalStorage, since it needs your real logins. Replay switches `fakerKey` to
+the separate namespace, which starts empty, so you add an account again inside replay. Replay
+never checks tokens, so any token the extension itself accepts works.
 
 ## Rules
 
@@ -66,10 +66,10 @@ const apiFetch = withFaker(fetch, {
 });
 ```
 
-**String values are fail-closed:** every one is replaced unless a rule keeps it, except ASCII codes
-of one or two characters. List every field the
-UI branches on (status, kind, type) in `keep`, or it arrives as fake text. Write a `keepIf` pattern
-as tightly as the public forms allow; a loose one keeps personal text.
+Every string value is replaced unless a rule keeps it. The one exception is an ASCII code of one
+or two characters. List every field the UI branches on (status, kind, type) in `keep`, or it
+arrives as fake text. Write each `keepIf` pattern as tightly as the public forms allow, because a
+loose one keeps personal text.
 
 | Value | Becomes |
 | --- | --- |
@@ -93,8 +93,7 @@ is ever stored.
 **Leak check.** Before saving, the scrubber searches every value it kept verbatim for any original
 it replaced, and for each word of a replaced name, except banking vocabulary. A hit means a
 field holding personal data is in `keep`, so the fixture is **not saved**. The console and
-`refused.json` name the fields, never the values. Fix the rule and walk that screen again. A
-refusal is the faker doing its job.
+`refused.json` name the fields, never the values. Fix the rule and walk that screen again.
 
 The check has two blind spots: `keepIf` values (the pattern is their only check, so keep it
 tight) and originals shorter than four characters, which would match by coincidence.
@@ -105,14 +104,14 @@ tight) and originals shorter than four characters, which would match by coincide
 `{ "status": 200, "body": … }`.
 
 - **Keyed by method, path, and page parameters** (`start_after`, `end_before`, `cursor`, `offset`),
-  so page 2 isn't a replay of page 1. Other query parameters are ignored: a search replays the
+  so page 2 isn't a replay of page 1. Other query parameters are ignored. A search replays the
   recorded list, so screenshot an unfiltered view or accept an illustrative result.
 - **`raycast-faker clear`** deletes the fixtures but keeps the secrets, so re-recording produces the
   same fakes. Delete `config.json` for all-new fakes.
 - **One login per recording.** Fixtures aren't keyed by token, so two accounts calling the same
   endpoint overwrite each other. Record with only the account you want to show.
 
-## Where real data leaks besides `fetch`
+## What the faker doesn't cover
 
 The faker scrubs the string values in JSON responses from the wrapped `fetch`, and moves keys
 wrapped in `fakerKey`. Check each of these before shooting:
@@ -121,7 +120,6 @@ wrapped in `fakerKey`. Check each of these before shooting:
   than money (a numeric ID or account number), and path segments other than UUIDs and runs of
   four or more digits (a username in `/users/jane`), which end up in fixture file names. If your
   API puts personal data in any of these, don't record that endpoint.
-
 - **Other caches.** `useCachedPromise`, `useCachedState`, `useFetch` and `Cache` hold real data
   from normal use and show it before a replayed request answers. Key them with `fakerKey`, or
   clear the extension's cache.
@@ -130,7 +128,7 @@ wrapped in `fakerKey`. Check each of these before shooting:
   with `isReplaying()`, or plan screens that don't show their results.
 - **Identity saved at setup,** such as an account name stored when a token is added. Replay starts
   empty, so record the endpoint the setup flow calls.
-- **The shape of your history.** Scaling hides magnitudes, not trends: a chart keeps its real
-  shape. Decide whether that's acceptable for your data.
+- **The shape of your history.** Scaling hides the amounts but keeps the trend, so a chart keeps
+  its real shape. Decide whether that's acceptable for your data.
 
 A human still has to look at every screenshot before it ships.
