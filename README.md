@@ -1,7 +1,7 @@
 # @chrismessina/raycast-faker
 
-Realistic Store screenshots for Raycast extensions that show confidential data, without blurring
-or pixelating your own account.
+Generate actual screenshots without leaking private, sensitive, or confidential data before
+publishing Raycast extensions to the Raycast Store.
 
 An extension for a bank, a CRM, a calendar, or an inbox has only one source of realistic
 screens: the contributor's real data. The faker records your extension's real API responses and
