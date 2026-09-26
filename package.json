@@ -1,0 +1,38 @@
+{
+  "name": "@chrismessina/raycast-faker",
+  "version": "0.1.0",
+  "description": "Real-looking, obscured data for Store screenshots of Raycast extensions that show personal data",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "raycast-faker": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
+    "clean": "rm -rf dist"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map",
+    "CHANGELOG.md"
+  ],
+  "keywords": ["raycast", "screenshots", "fixtures", "privacy", "faker"],
+  "author": "Chris Messina",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrismessina/raycast-faker.git"
+  },
+  "peerDependencies": {
+    "@raycast/api": "^1.0.0 || ^2.0.0"
+  },
+  "devDependencies": {
+    "@raycast/api": "^2.5.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.3"
+  }
+}
